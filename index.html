@@ -222,10 +222,10 @@ async function startMic(){
   await initAudio();
   if(!workletOk){say('This browser cannot run the voice engine. Update iOS.',true);return}
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Microphone needs the page to be opened over https.',true);return}
+  setSession('play-and-record');
   try{
     stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
-  }catch(e){const n=e&&e.name||'error';say(n==='NotAllowedError'?'Microphone blocked ('+n+'). Check Settings > Safari > Microphone, and that no other app or call is using it.':n==='NotFoundError'?'No microphone found ('+n+').':'Could not start the microphone ('+n+(e&&e.message?': '+e.message:'')+').',true);return}
-  setSession('play-and-record');
+  }catch(e){setSession('playback');const n=e&&e.name||'error';say(n==='NotAllowedError'?'Microphone blocked ('+n+'). Check Settings > Safari > Microphone, and that no other app or call is using it.':n==='NotFoundError'?'No microphone found ('+n+').':'Could not start the microphone ('+n+(e&&e.message?': '+e.message:'')+').',true);return}
   micSource=ctx.createMediaStreamSource(stream);micOn=true;applyVoice();
   ui();keepAwake();
 }
