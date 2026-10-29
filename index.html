@@ -54,6 +54,28 @@ h2{margin:2px 2px -2px;font-size:11px;font-weight:600;letter-spacing:.16em;text-
 .s{background:var(--blood-dim);border:1px solid var(--blood-line);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13.5px;font-weight:650;min-height:0;padding:4px}
 .s .e{font-size:24px;line-height:1}
 .s:active{background:var(--blood);border-color:var(--blood);transform:scale(.95)}
+[hidden]{display:none!important}
+.h2row{display:flex;justify-content:space-between;align-items:center;margin-bottom:-2px}
+.h2row h2{margin:2px}
+#editBtn{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--blood);padding:8px 6px}
+.s .n{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s{position:relative}
+.editing .s{border-style:dashed;border-color:var(--blood)}
+.editing .s::after{content:"\270E";position:absolute;top:5px;right:8px;font-size:13px;color:var(--blood)}
+.sheet{position:fixed;inset:0;background:#000b;display:flex;align-items:flex-end;z-index:20}
+.panel{width:100%;background:var(--surface);border-top:1px solid var(--line);border-radius:22px 22px 0 0;display:flex;flex-direction:column;gap:12px;
+  padding:16px max(16px,env(safe-area-inset-right)) max(18px,env(safe-area-inset-bottom)) max(16px,env(safe-area-inset-left))}
+.ph{display:flex;justify-content:space-between;align-items:center}
+.ph b{font:italic 700 21px var(--serif)}
+#shClose{color:var(--amber);font-weight:650;font-size:16px;padding:8px 4px}
+.panel label{display:flex;flex-direction:column;gap:6px;font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.panel input{font:16px var(--sans);color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:12px;padding:12px;-webkit-user-select:text;user-select:text;text-transform:none;letter-spacing:0;width:100%}
+#shInfo{font-size:13px;color:var(--muted);min-height:18px}
+.pbtn{flex:1;height:50px;border-radius:14px;font-weight:650;font-size:16px;background:var(--bg);border:1px solid var(--line)}
+#shRec{background:var(--blood);border-color:var(--blood);color:#fff}
+#shRec.live{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.55}}
+#shReset{color:var(--muted);font-size:14px;padding:8px}
 .vig{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 50%,transparent 20%,#e0283a 130%);mix-blend-mode:screen}
 .vig.go{animation:vig .9s ease-out}
 @keyframes vig{0%{opacity:.95}100%{opacity:0}}
@@ -76,8 +98,17 @@ h2{margin:2px 2px -2px;font-size:11px;font-weight:600;letter-spacing:.16em;text-
   <h2>Voices</h2>
   <div id="voices" class="grid"></div>
 
-  <h2>Jump scares</h2>
+  <div class="h2row"><h2>Jump scares</h2><button id="editBtn" type="button">Edit</button></div>
   <div id="scares" class="grid"></div>
+</div>
+<div class="sheet" id="sheet" hidden>
+  <div class="panel" role="dialog" aria-label="Edit jump scare">
+    <div class="ph"><b id="shTitle">Edit button</b><button id="shClose" type="button">Done</button></div>
+    <label for="shName">Name<input id="shName" maxlength="12" autocomplete="off" autocapitalize="sentences" enterkeyhint="done"></label>
+    <div id="shInfo"></div>
+    <div class="row"><button id="shRec" class="pbtn" type="button">Record your own</button><button id="shPlay" class="pbtn" type="button">Play</button></div>
+    <button id="shReset" type="button">Restore original sound</button>
+  </div>
 </div>
 <div class="vig" id="vig"></div>
 <audio id="silent" playsinline loop></audio>
@@ -161,6 +192,7 @@ async function initAudio(){
     await ctx.audioWorklet.addModule(url);workletOk=true;
   }catch(e){workletOk=false;console.error(e)}
   await ctx.resume();
+  await predecode();
 }
 
 function curve(k){const n=1024,c=new Float32Array(n),t=Math.tanh(k);for(let i=0;i<n;i++){const x=i/(n-1)*2-1;c[i]=Math.tanh(k*x)/t}return c}
@@ -340,15 +372,118 @@ VOICES.forEach(v=>{
   b.innerHTML=`<span class="e">${v.emoji}</span><span><b>${v.name}</b><small>${v.sub}</small></span>`;
   b.onclick=()=>{voiceId=v.id;applyVoice();ui()};$('#voices').appendChild(b);
 });
-SCARES.forEach(s=>{
-  const b=document.createElement('button');b.type='button';b.className='s';
-  b.innerHTML=`<span class="e">${s.emoji}</span>${s.label}`;
-  b.onclick=async()=>{
-    await initAudio();s.run();
-    flashUntil=performance.now()+1600;
-    const g=$('#vig');g.classList.remove('go');void g.offsetWidth;g.classList.add('go');
+/* ---------- your own recordings (saved on the phone in IndexedDB) ---------- */
+const MAXREC=6;
+let slotData=[],cache=[],editing=false,cur=-1,rec=null,recTimer=null;
+const btns=[];
+
+function idb(){return new Promise((res,rej)=>{const r=indexedDB.open('spookbox',1);r.onupgradeneeded=()=>r.result.createObjectStore('slots');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function dbAll(){const d=await idb();return new Promise((res,rej)=>{const out=[],q=d.transaction('slots').objectStore('slots').openCursor();q.onsuccess=()=>{const c=q.result;if(c){out[c.key]=c.value;c.continue()}else res(out)};q.onerror=()=>rej(q.error)})}
+async function dbPut(k,v){const d=await idb();return new Promise((res,rej)=>{const tx=d.transaction('slots','readwrite');tx.objectStore('slots').put(v,k);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)})}
+
+const slotsReady=dbAll().then(a=>{slotData=a}).catch(e=>console.error(e)).then(()=>SCARES.forEach((_,i)=>paint(i)));
+
+function paint(i){
+  const b=btns[i];if(!b)return;const d=slotData[i]||{},s=SCARES[i];
+  b.querySelector('.e').textContent=d.blob?'🎙️':s.emoji;
+  b.querySelector('.n').textContent=d.name||s.label;
+}
+async function decodeSlot(i){
+  cache[i]=null;const d=slotData[i];if(!d||!d.blob)return;
+  try{
+    const buf=await ctx.decodeAudioData(await d.blob.arrayBuffer());let pk=0;
+    for(let c=0;c<buf.numberOfChannels;c++){const x=buf.getChannelData(c);for(let j=0;j<x.length;j++){const a=Math.abs(x[j]);if(a>pk)pk=a}}
+    cache[i]={buf,g:Math.min(.95/(pk||1),8)};
+  }catch(e){console.error(e);cache[i]=null}
+}
+async function predecode(){await slotsReady;for(let i=0;i<SCARES.length;i++)await decodeSlot(i)}
+
+function flash(){
+  flashUntil=performance.now()+1600;
+  const g=$('#vig');g.classList.remove('go');void g.offsetWidth;g.classList.add('go');
+}
+async function playSlot(i,fx){
+  await initAudio();const c=cache[i];
+  if(c){const s=ctx.createBufferSource();s.buffer=c.buf;const g=gain(c.g);s.connect(g);g.connect(bus);s.start()}
+  else SCARES[i].run();
+  if(fx)flash();
+}
+
+function info(t){$('#shInfo').textContent=t}
+function refreshSheet(){
+  const d=slotData[cur]||{};
+  $('#shReset').hidden=!d.blob;
+  $('#shRec').textContent=rec?'Stop':(d.blob?'Record again':'Record your own');
+  $('#shRec').classList.toggle('live',!!rec);
+  if(!rec&&!$('#shInfo').dataset.keep)info(d.blob?'Your recording':'Original sound');
+}
+function openSheet(i){
+  cur=i;const d=slotData[i]||{};
+  $('#shName').value=d.name||SCARES[i].label;
+  delete $('#shInfo').dataset.keep;refreshSheet();$('#sheet').hidden=false;
+}
+async function saveSlot(i,patch){
+  slotData[i]={...(slotData[i]||{}),...patch};paint(i);
+  try{await dbPut(i,slotData[i]);if(navigator.storage&&navigator.storage.persist)navigator.storage.persist()}
+  catch(e){console.error(e);$('#shInfo').dataset.keep=1;info('Could not save on this device. It will be lost when you close the app.')}
+}
+function saveName(){
+  if(cur<0)return;const v=$('#shName').value.trim().slice(0,12);
+  const d=slotData[cur]||{},next=(v&&v!==SCARES[cur].label)?v:'';
+  if(next!==(d.name||''))saveSlot(cur,{name:next});
+}
+function closeSheet(){
+  if(rec)stopRec(true);
+  saveName();$('#sheet').hidden=true;cur=-1;
+}
+
+async function startRec(){
+  const i=cur;await initAudio();
+  if(typeof MediaRecorder==='undefined'||!navigator.mediaDevices){info('This browser cannot record audio.');return}
+  let st=stream,own=false;
+  if(!st){
+    setSession('play-and-record');
+    try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:true}});own=true}
+    catch(e){setSession('playback');info('Microphone unavailable ('+(e&&e.name||'error')+')');return}
+  }
+  let r;try{r=new MediaRecorder(st)}catch(e){if(own){st.getTracks().forEach(t=>t.stop());setSession('playback')}info('Recording is not supported here ('+(e&&e.name||'error')+')');return}
+  const chunks=[];rec={r,own,st,discard:false};const started=performance.now();
+  r.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
+  r.onstop=async()=>{
+    clearInterval(recTimer);const m=rec;rec=null;
+    if(m.own){m.st.getTracks().forEach(t=>t.stop());setSession(micOn?'play-and-record':'playback')}
+    delete $('#shInfo').dataset.keep;
+    if(m.discard){refreshSheet();return}
+    const blob=new Blob(chunks,{type:r.mimeType||'audio/mp4'});
+    if(blob.size<800){$('#shInfo').dataset.keep=1;refreshSheet();info('Too short. Hold the phone near your mouth and try again.');return}
+    const prev=slotData[i];slotData[i]={...(prev||{}),blob};await decodeSlot(i);
+    if(!cache[i]){slotData[i]=prev;paint(i);$('#shInfo').dataset.keep=1;refreshSheet();info('Could not read that recording. Try again.');return}
+    await saveSlot(i,{blob});
+    if(cur===i){$('#shInfo').dataset.keep=1;refreshSheet();info('Saved. Tap Play to hear it.')}
   };
-  $('#scares').appendChild(b);
+  r.start();refreshSheet();
+  const tick=()=>{const left=Math.max(0,MAXREC-(performance.now()-started)/1000);$('#shRec').textContent='Stop ('+Math.ceil(left)+')';if(left<=0)stopRec(false)};
+  tick();recTimer=setInterval(tick,100);
+}
+function stopRec(discard){if(!rec)return;rec.discard=!!discard;try{rec.r.stop()}catch(e){}}
+
+$('#shRec').onclick=()=>rec?stopRec(false):startRec();
+$('#shPlay').onclick=()=>playSlot(cur,false);
+$('#shReset').onclick=async()=>{await saveSlot(cur,{blob:null});cache[cur]=null;delete $('#shInfo').dataset.keep;refreshSheet()};
+$('#shClose').onclick=closeSheet;
+$('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});
+$('#shName').addEventListener('keydown',e=>{if(e.key==='Enter')e.target.blur()});
+$('#editBtn').onclick=()=>{
+  editing=!editing;document.body.classList.toggle('editing',editing);
+  $('#editBtn').textContent=editing?'Done':'Edit';
+  if(editing)say('Tap a jump scare to rename it or record your own sound.');else{closeSheet();ui()}
+};
+
+SCARES.forEach((s,i)=>{
+  const b=document.createElement('button');b.type='button';b.className='s';
+  b.innerHTML='<span class="e"></span><span class="n"></span>';
+  b.onclick=()=>editing?openSheet(i):playSlot(i,true);
+  btns.push(b);$('#scares').appendChild(b);paint(i);
 });
 $('#power').onclick=()=>micOn?stopMic():startMic();
 $('#vol').oninput=e=>{vol=+e.target.value;if(master)master.gain.value=vol};
