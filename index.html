@@ -224,7 +224,7 @@ async function startMic(){
   if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Microphone needs the page to be opened over https.',true);return}
   try{
     stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
-  }catch(e){say('Microphone blocked. Allow it in Settings > Safari > Microphone, then try again.',true);return}
+  }catch(e){const n=e&&e.name||'error';say(n==='NotAllowedError'?'Microphone blocked ('+n+'). Check Settings > Safari > Microphone, and that no other app or call is using it.':n==='NotFoundError'?'No microphone found ('+n+').':'Could not start the microphone ('+n+(e&&e.message?': '+e.message:'')+').',true);return}
   setSession('play-and-record');
   micSource=ctx.createMediaStreamSource(stream);micOn=true;applyVoice();
   ui();keepAwake();
