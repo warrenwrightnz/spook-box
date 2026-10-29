@@ -1,0 +1,379 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Spook Box">
+<meta name="theme-color" content="#0a0810">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Spook Box</title>
+<style>
+:root{
+  --bg:#0a0810; --surface:#16121e; --line:#2a2236; --text:#efe9f7; --muted:#8d839c;
+  --amber:#ff8a1f; --amber-dim:#3a2210; --blood:#e0283a; --blood-dim:#2a0c13; --blood-line:#5c1a28;
+  --serif:ui-serif,"New York",Georgia,serif; --sans:-apple-system,"SF Pro Text",system-ui,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);overflow:hidden;overscroll-behavior:none}
+body{background:radial-gradient(120% 60% at 50% -10%,#2a1640 0%,transparent 60%),var(--bg)}
+.app{height:100%;display:flex;flex-direction:column;gap:10px;
+  padding-top:max(10px,env(safe-area-inset-top));padding-bottom:max(12px,env(safe-area-inset-bottom));
+  padding-left:max(16px,env(safe-area-inset-left));padding-right:max(16px,env(safe-area-inset-right))}
+header{display:flex;align-items:baseline;justify-content:space-between;padding-top:4px}
+h1{font:italic 700 30px/1 var(--serif);margin:0;letter-spacing:-.01em}
+h1 span{color:var(--amber)}
+#state{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+#state.on{color:var(--amber)}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:10px 12px;display:flex;flex-direction:column;gap:8px}
+canvas{width:100%;height:56px;display:block}
+.row{display:flex;gap:10px;align-items:center}
+button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;touch-action:manipulation}
+#power{flex:1.3;height:46px;border-radius:14px;background:var(--amber);color:#1a0d02;font-weight:700;font-size:16px;letter-spacing:.01em}
+#power.on{background:var(--amber-dim);color:var(--amber);box-shadow:inset 0 0 0 1.5px var(--amber)}
+.vol{flex:1;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px}
+input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:28px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:var(--line)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:24px;height:24px;border-radius:50%;background:var(--text);margin-top:-10px;box-shadow:0 1px 6px #000a}
+#msg{font-size:12px;line-height:1.35;color:var(--muted);min-height:16px}
+#msg.err{color:#ff7a86}
+h2{margin:2px 2px -2px;font-size:11px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:var(--muted)}
+.grid{display:grid;gap:8px;min-height:0}
+#voices{grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);flex:3 1 0}
+#scares{grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);flex:2.1 1 0}
+.v{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:8px 12px;display:flex;align-items:center;gap:10px;text-align:left;min-height:0}
+.v .e{font-size:30px;line-height:1}
+.v b{display:block;font-size:15.5px;font-weight:650}
+.v small{display:block;font-size:11.5px;color:var(--muted);margin-top:2px}
+.v.sel{background:var(--amber-dim);border-color:var(--amber);box-shadow:0 0 22px -6px var(--amber)}
+.v.sel small{color:#d9a26a}
+.v:active{transform:scale(.97)}
+.s{background:var(--blood-dim);border:1px solid var(--blood-line);border-radius:16px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:13.5px;font-weight:650;min-height:0;padding:4px}
+.s .e{font-size:24px;line-height:1}
+.s:active{background:var(--blood);border-color:var(--blood);transform:scale(.95)}
+.vig{position:fixed;inset:0;pointer-events:none;opacity:0;background:radial-gradient(circle at 50% 50%,transparent 20%,#e0283a 130%);mix-blend-mode:screen}
+.vig.go{animation:vig .9s ease-out}
+@keyframes vig{0%{opacity:.95}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.vig.go{animation-duration:.01s}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header><h1>Spook<span>Box</span></h1><div id="state">Mic off</div></header>
+
+  <section class="card">
+    <canvas id="scope"></canvas>
+    <div class="row">
+      <button id="power" type="button">Start haunting</button>
+      <label class="vol" for="vol">Vol<input id="vol" type="range" min="0" max="1.6" step="0.01" value="1"></label>
+    </div>
+    <div id="msg">Use a Bluetooth speaker or stand away from it, or the mic will squeal.</div>
+  </section>
+
+  <h2>Voices</h2>
+  <div id="voices" class="grid"></div>
+
+  <h2>Jump scares</h2>
+  <div id="scares" class="grid"></div>
+</div>
+<div class="vig" id="vig"></div>
+<audio id="silent" playsinline loop></audio>
+
+<script>
+"use strict";
+const $=s=>document.querySelector(s);
+
+/* ---------- pitch shifter (AudioWorklet, loaded from a blob so the app stays one file) ---------- */
+const WORKLET=`
+class PitchShifter extends AudioWorkletProcessor{
+  static get parameterDescriptors(){return[
+    {name:'ratio',defaultValue:1,minValue:0.25,maxValue:4,automationRate:'k-rate'},
+    {name:'vibDepth',defaultValue:0,minValue:0,maxValue:1,automationRate:'k-rate'},
+    {name:'vibRate',defaultValue:5,minValue:0,maxValue:30,automationRate:'k-rate'}]}
+  constructor(){super();this.size=1<<16;this.buf=new Float32Array(this.size);this.w=0;this.p=[0,0.5];this.win=Math.round(sampleRate*0.055);this.lfo=0}
+  process(inputs,outputs,params){
+    const inp=inputs[0]&&inputs[0][0],out=outputs[0][0];if(!out)return true;
+    const base=params.ratio[0],vd=params.vibDepth[0],vr=params.vibRate[0],mask=this.size-1,W=this.win;
+    for(let i=0;i<out.length;i++){
+      this.buf[this.w]=inp?inp[i]:0;
+      this.lfo+=vr/sampleRate;if(this.lfo>=1)this.lfo-=1;
+      const inc=(1-base*(1+vd*Math.sin(6.2831853*this.lfo)))/W;let y=0;
+      for(let k=0;k<2;k++){
+        let p=this.p[k]+inc;if(p>=1)p-=1;else if(p<0)p+=1;this.p[k]=p;
+        const rp=this.w-(p*W+1),i0=Math.floor(rp),fr=rp-i0,a=this.buf[i0&mask],b=this.buf[(i0+1)&mask],g=Math.sin(Math.PI*p);
+        y+=(a+(b-a)*fr)*g*g;
+      }
+      out[i]=y;this.w=(this.w+1)&mask;
+    }
+    return true;
+  }
+}
+registerProcessor('pitch-shifter',PitchShifter);`;
+
+/* ---------- voices ---------- */
+const VOICES=[
+ {id:'witch',name:'Cackling Witch',sub:'high, wobbly, wicked',emoji:'🧙‍♀️',cfg:{
+   layers:[{r:1.55,g:1,vd:.07,vr:9}],hp:350,peak:[2600,6],drive:2,trem:[11,.3],reverb:[.9,.15]}},
+ {id:'ghoul',name:'Shrieking Ghoul',sub:'screechy and torn',emoji:'💀',cfg:{
+   layers:[{r:1.25,g:1,vd:.15,vr:5.5},{r:.63,g:.35,vd:.1,vr:3}],hp:200,peak:[3200,8],drive:6,trem:[14,.3],reverb:[1.6,.3]}},
+ {id:'demon',name:'Demon',sub:'deep and doubled',emoji:'👹',cfg:{
+   layers:[{r:.55,g:1,vd:.01,vr:2},{r:.72,g:.55,vd:.02,vr:3}],lp:3500,peak:[130,8],drive:8,reverb:[1.2,.25]}},
+ {id:'ghost',name:'Ghost',sub:'hollow, echoing moan',emoji:'👻',cfg:{
+   layers:[{r:1,g:.7,vd:.03,vr:4},{r:1.5,g:.25,vd:.03,vr:3.3}],hp:400,trem:[3,.5],echo:[.38,.55,.5],reverb:[2.5,.5]}},
+ {id:'zombie',name:'Zombie',sub:'slow, slurred groan',emoji:'🧟',cfg:{
+   layers:[{r:.8,g:1,vd:.05,vr:2.2}],lp:2200,drive:3,trem:[5,.4],reverb:[.6,.15]}},
+ {id:'gremlin',name:'Gremlin',sub:'tiny and twitchy',emoji:'👺',cfg:{
+   layers:[{r:1.9,g:1,vd:.06,vr:12}],hp:500,peak:[3500,5],trem:[16,.2],echo:[.12,.3,.25]}}
+];
+
+/* ---------- audio core ---------- */
+let ctx,bus,master,analyser,noiseBuf,verbCache={},workletOk=false;
+let stream,micSource,chain,micOn=false,voiceId=VOICES[0].id,vol=1,wake=null,flashUntil=0;
+
+function setSession(t){try{if(navigator.audioSession)navigator.audioSession.type=t}catch(e){}}
+
+function silentWav(){
+  const n=800,b=new ArrayBuffer(44+n*2),v=new DataView(b),w=(o,s)=>[...s].forEach((c,i)=>v.setUint8(o+i,c.charCodeAt(0)));
+  w(0,'RIFF');v.setUint32(4,36+n*2,true);w(8,'WAVEfmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,8000,true);v.setUint32(28,16000,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,'data');v.setUint32(40,n*2,true);
+  return URL.createObjectURL(new Blob([b],{type:'audio/wav'}));
+}
+
+async function initAudio(){
+  if(ctx){if(ctx.state!=='running')await ctx.resume();return}
+  const AC=window.AudioContext||window.webkitAudioContext;
+  ctx=new AC({latencyHint:'interactive'});
+  /* a silent <audio> element makes iOS ignore the ring/silent switch for Web Audio */
+  const a=$('#silent');a.src=silentWav();a.play().catch(()=>{});
+  setSession('playback');
+  bus=ctx.createDynamicsCompressor();
+  bus.threshold.value=-14;bus.ratio.value=8;bus.attack.value=.003;bus.release.value=.2;
+  master=ctx.createGain();master.gain.value=vol;
+  analyser=ctx.createAnalyser();analyser.fftSize=1024;
+  bus.connect(master);master.connect(ctx.destination);master.connect(analyser);
+  noiseBuf=ctx.createBuffer(1,ctx.sampleRate*2,ctx.sampleRate);
+  const d=noiseBuf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+  try{
+    const url=URL.createObjectURL(new Blob([WORKLET],{type:'application/javascript'}));
+    await ctx.audioWorklet.addModule(url);workletOk=true;
+  }catch(e){workletOk=false;console.error(e)}
+  await ctx.resume();
+}
+
+function curve(k){const n=1024,c=new Float32Array(n),t=Math.tanh(k);for(let i=0;i<n;i++){const x=i/(n-1)*2-1;c[i]=Math.tanh(k*x)/t}return c}
+function shaper(k){const s=ctx.createWaveShaper();s.curve=curve(k);s.oversample='2x';return s}
+function filt(type,f,q){const b=ctx.createBiquadFilter();b.type=type;b.frequency.value=f;if(q!=null)b.Q.value=q;return b}
+function osc(type,f){const o=ctx.createOscillator();o.type=type;o.frequency.value=f;return o}
+function noise(){const s=ctx.createBufferSource();s.buffer=noiseBuf;s.loop=true;return s}
+function gain(v){const g=ctx.createGain();g.gain.value=v;return g}
+function env(g,t,a,peak,hold,rel){
+  g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(peak,t+a);
+  g.gain.setValueAtTime(peak,t+a+hold);g.gain.exponentialRampToValueAtTime(.0001,t+a+hold+rel);
+}
+function impulse(sec){
+  if(verbCache[sec])return verbCache[sec];
+  const len=Math.floor(ctx.sampleRate*sec),b=ctx.createBuffer(2,len,ctx.sampleRate);
+  for(let c=0;c<2;c++){const d=b.getChannelData(c);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.4)}
+  return verbCache[sec]=b;
+}
+
+/* ---------- live voice chain ---------- */
+function buildChain(cfg){
+  const nodes=[],stops=[];const reg=n=>(nodes.push(n),n);
+  const input=reg(gain(2));let head=input;
+  if(cfg.hp){const f=reg(filt('highpass',cfg.hp,.7));head.connect(f);head=f}
+  const sum=reg(gain(1));
+  for(const l of cfg.layers){
+    const n=reg(new AudioWorkletNode(ctx,'pitch-shifter',{numberOfInputs:1,numberOfOutputs:1,outputChannelCount:[1],channelCount:1,channelCountMode:'explicit'}));
+    n.parameters.get('ratio').value=l.r;n.parameters.get('vibDepth').value=l.vd||0;n.parameters.get('vibRate').value=l.vr||5;
+    const g=reg(gain(l.g));head.connect(n);n.connect(g);g.connect(sum);
+  }
+  head=sum;
+  if(cfg.peak){const f=reg(filt('peaking',cfg.peak[0],1.1));f.gain.value=cfg.peak[1];head.connect(f);head=f}
+  if(cfg.drive){const s=reg(shaper(cfg.drive));head.connect(s);head=s}
+  if(cfg.lp){const f=reg(filt('lowpass',cfg.lp,.7));head.connect(f);head=f}
+  if(cfg.trem){
+    const [rate,depth]=cfg.trem,g=reg(gain(1-depth/2)),l=osc('sine',rate),lg=reg(gain(depth/2));
+    l.connect(lg);lg.connect(g.gain);l.start();stops.push(l);head.connect(g);head=g;
+  }
+  const out=reg(gain(.9));head.connect(out);
+  if(cfg.echo){
+    const [t,fb,wet]=cfg.echo,d=reg(ctx.createDelay(1)),f=reg(gain(fb)),w=reg(gain(wet));
+    d.delayTime.value=t;head.connect(d);d.connect(w);w.connect(out);d.connect(f);f.connect(d);
+  }
+  if(cfg.reverb){
+    const [sec,wet]=cfg.reverb,c=reg(ctx.createConvolver()),w=reg(gain(wet));
+    c.buffer=impulse(sec);head.connect(c);c.connect(w);w.connect(out);
+  }
+  return{input,output:out,dispose(){stops.forEach(o=>{try{o.stop()}catch(e){}});nodes.forEach(n=>{try{n.disconnect()}catch(e){}})}};
+}
+
+function applyVoice(){
+  if(!micOn||!micSource)return;
+  const old=chain,v=VOICES.find(v=>v.id===voiceId);
+  chain=buildChain(v.cfg);micSource.connect(chain.input);chain.output.connect(bus);
+  if(old){try{micSource.disconnect(old.input)}catch(e){}old.dispose()}
+}
+
+async function startMic(){
+  await initAudio();
+  if(!workletOk){say('This browser cannot run the voice engine. Update iOS.',true);return}
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){say('Microphone needs the page to be opened over https.',true);return}
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:false,autoGainControl:false}});
+  }catch(e){say('Microphone blocked. Allow it in Settings > Safari > Microphone, then try again.',true);return}
+  setSession('play-and-record');
+  micSource=ctx.createMediaStreamSource(stream);micOn=true;applyVoice();
+  ui();keepAwake();
+}
+function stopMic(){
+  micOn=false;
+  if(chain){chain.dispose();chain=null}
+  if(micSource){try{micSource.disconnect()}catch(e){}micSource=null}
+  if(stream){stream.getTracks().forEach(t=>t.stop());stream=null}
+  setSession('playback');
+  if(wake){wake.release().catch(()=>{});wake=null}
+  ui();
+}
+async function keepAwake(){try{if('wakeLock' in navigator)wake=await navigator.wakeLock.request('screen')}catch(e){}}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(micOn)keepAwake();if(ctx&&ctx.state!=='running')ctx.resume().catch(()=>{})}});
+
+/* ---------- jump scares (synthesised on the phone, no files, no network) ---------- */
+const now=()=>ctx.currentTime+.01;
+function wet(src,sec,amt){const c=ctx.createConvolver();c.buffer=impulse(sec);const g=gain(amt);src.connect(c);c.connect(g);g.connect(bus)}
+
+function scream(){
+  const t=now(),dur=1.9,out=gain(0);env(out,t,.02,.9,1,.85);
+  const sh=shaper(9),bp=filt('bandpass',2200,1.2);bp.connect(sh);sh.connect(out);out.connect(bus);wet(out,1,.25);
+  const lfo=osc('sine',13),lg=gain(95);lfo.connect(lg);
+  for(const type of['sawtooth','square']){
+    const o=osc(type,600);const f=o.frequency;
+    f.setValueAtTime(600,t);f.exponentialRampToValueAtTime(2100,t+.25);f.exponentialRampToValueAtTime(1700,t+1.2);f.exponentialRampToValueAtTime(1100,t+dur);
+    lg.connect(f);o.connect(bp);o.start(t);o.stop(t+dur+.1);
+  }
+  lfo.start(t);lfo.stop(t+dur+.1);
+  const n=noise(),nb=filt('bandpass',3500,.8),ng=gain(.5);n.connect(nb);nb.connect(ng);ng.connect(sh);n.start(t);n.stop(t+dur);
+}
+
+function laugh(){
+  const t=now(),out=gain(.9),sh=shaper(3);sh.connect(out);out.connect(bus);wet(out,1.2,.2);
+  let ti=t;
+  for(let i=0;i<9;i++){
+    const f0=540-i*20+(i%2?45:0),last=i===8;
+    const o=osc('sawtooth',f0);o.frequency.setValueAtTime(f0*1.18,ti);o.frequency.exponentialRampToValueAtTime(f0*.78,ti+(last?.4:.14));
+    const bp=filt('bandpass',900,4);bp.frequency.setValueAtTime(850,ti);bp.frequency.linearRampToValueAtTime(1600,ti+.12);
+    const g=gain(0);env(g,ti,.012,2.4,last?.3:.05,last?.25:.09);
+    o.connect(bp);bp.connect(g);g.connect(sh);o.start(ti);o.stop(ti+.8);
+    ti+=.17+(i>5?.035*(i-5):0);
+  }
+}
+
+function growl(){
+  const t=now(),dur=2,out=gain(0);env(out,t,.05,1,1.1,.85);
+  const lp=filt('lowpass',300,2);lp.frequency.setValueAtTime(300,t);lp.frequency.linearRampToValueAtTime(950,t+1);lp.frequency.linearRampToValueAtTime(350,t+dur);
+  const sh=shaper(7),am=gain(.55),amL=osc('sine',27),amG=gain(.45);amL.connect(amG);amG.connect(am.gain);
+  for(const f of[55,57.5,110]){const o=osc('sawtooth',f);o.frequency.linearRampToValueAtTime(f*.8,t+dur);o.connect(lp);o.start(t);o.stop(t+dur+.1)}
+  const n=noise(),nl=filt('lowpass',700),ng=gain(.5);n.connect(nl);nl.connect(ng);ng.connect(lp);n.start(t);n.stop(t+dur);
+  lp.connect(sh);sh.connect(am);am.connect(out);out.connect(bus);amL.start(t);amL.stop(t+dur+.1);
+}
+
+function wail(){
+  const t=now(),dur=3.4,out=gain(0);env(out,t,.5,.8,1.8,1.1);out.connect(bus);wet(out,2.5,.7);
+  const lfo=osc('sine',5.5),lg=gain(14);lfo.connect(lg);
+  for(const [type,det] of[['sine',0],['triangle',7]]){
+    const o=osc(type,280);o.detune.value=det;const f=o.frequency;
+    f.setValueAtTime(280,t);f.linearRampToValueAtTime(640,t+1);f.linearRampToValueAtTime(390,t+2);f.exponentialRampToValueAtTime(220,t+dur);
+    lg.connect(f);const bp=filt('bandpass',900,1.5);o.connect(bp);bp.connect(out);o.start(t);o.stop(t+dur+.1);
+  }
+  lfo.start(t);lfo.stop(t+dur+.1);
+}
+
+function creak(){
+  const t=now(),dur=2.2,out=gain(0);env(out,t,.1,.9,1.5,.5);
+  const pts=new Float32Array(48);let v=55;for(let i=0;i<pts.length;i++){v+=(Math.random()-.5)*14;v=Math.max(30,Math.min(80,v));pts[i]=v}
+  const o=osc('sawtooth',55);o.frequency.setValueCurveAtTime(pts,t,dur);
+  const bp=filt('bandpass',400,9);bp.frequency.setValueAtTime(350,t);bp.frequency.linearRampToValueAtTime(1100,t+dur*.6);bp.frequency.linearRampToValueAtTime(700,t+dur);
+  const sh=shaper(4),pre=gain(3);o.connect(bp);bp.connect(pre);pre.connect(sh);sh.connect(out);out.connect(bus);wet(out,.8,.25);
+  o.start(t);o.stop(t+dur+.1);
+}
+
+function stinger(){
+  const t=now(),out=gain(.9);out.connect(bus);wet(out,1.4,.3);
+  const boom=osc('sine',110),bg=gain(0);boom.frequency.setValueAtTime(110,t);boom.frequency.exponentialRampToValueAtTime(32,t+1.2);
+  env(bg,t,.005,1.6,.1,1.3);boom.connect(bg);bg.connect(out);boom.start(t);boom.stop(t+1.6);
+  const n=noise(),nl=filt('lowpass',900),ng=gain(0);env(ng,t,.003,1,.03,.5);n.connect(nl);nl.connect(ng);ng.connect(out);n.start(t);n.stop(t+.7);
+  const sg=gain(0),ss=shaper(6);env(sg,t,.01,.55,.25,1.5);ss.connect(sg);sg.connect(out);
+  for(const f of[466,493,932,987]){const o=osc('sawtooth',f);o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(f*1.12,t+1.6);const h=filt('highpass',400);o.connect(h);h.connect(ss);o.start(t);o.stop(t+1.8)}
+}
+
+function say(text,isErr){const m=$('#msg');m.textContent=text;m.classList.toggle('err',!!isErr)}
+function speak(text){
+  if(!('speechSynthesis' in window))return;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text),vs=speechSynthesis.getVoices();
+  const v=vs.find(v=>/^en/i.test(v.lang)&&v.localService)||vs.find(v=>/^en/i.test(v.lang));
+  if(v)u.voice=v;u.pitch=0;u.rate=.5;u.volume=1;speechSynthesis.speak(u);
+}
+
+const SCARES=[
+ {label:'Scream',emoji:'😱',run:scream},{label:'Evil laugh',emoji:'😈',run:laugh},{label:'Growl',emoji:'🐺',run:growl},
+ {label:'Ghost wail',emoji:'👻',run:wail},{label:'Door creak',emoji:'🚪',run:creak},{label:'Stinger',emoji:'💥',run:stinger},
+ {label:'Behind you',emoji:'👀',run:()=>speak('Behind you')},{label:'Get out',emoji:'🩸',run:()=>speak('Get out')},{label:'I see you',emoji:'🕯️',run:()=>speak('I see you')}
+];
+
+/* ---------- UI ---------- */
+function ui(){
+  $('#power').textContent=micOn?'Stop haunting':'Start haunting';
+  $('#power').classList.toggle('on',micOn);
+  const v=VOICES.find(v=>v.id===voiceId);
+  const s=$('#state');s.textContent=micOn?'Live':'Mic off';s.classList.toggle('on',micOn);
+  document.querySelectorAll('.v').forEach(b=>b.classList.toggle('sel',b.dataset.id===voiceId));
+  if(micOn)say('Speaking as the '+v.name+'. Keep the phone away from the speaker.');
+  else if(!$('#msg').classList.contains('err'))say('Use a Bluetooth speaker or stand away from it, or the mic will squeal.');
+}
+
+VOICES.forEach(v=>{
+  const b=document.createElement('button');b.type='button';b.className='v';b.dataset.id=v.id;
+  b.innerHTML=`<span class="e">${v.emoji}</span><span><b>${v.name}</b><small>${v.sub}</small></span>`;
+  b.onclick=()=>{voiceId=v.id;applyVoice();ui()};$('#voices').appendChild(b);
+});
+SCARES.forEach(s=>{
+  const b=document.createElement('button');b.type='button';b.className='s';
+  b.innerHTML=`<span class="e">${s.emoji}</span>${s.label}`;
+  b.onclick=async()=>{
+    await initAudio();s.run();
+    flashUntil=performance.now()+1600;
+    const g=$('#vig');g.classList.remove('go');void g.offsetWidth;g.classList.add('go');
+  };
+  $('#scares').appendChild(b);
+});
+$('#power').onclick=()=>micOn?stopMic():startMic();
+$('#vol').oninput=e=>{vol=+e.target.value;if(master)master.gain.value=vol};
+
+/* ---------- scope ---------- */
+const cv=$('#scope'),c2=cv.getContext('2d');let W=0,H=0,buf;
+function size(){const r=devicePixelRatio||1;W=cv.clientWidth;H=cv.clientHeight;cv.width=W*r;cv.height=H*r;c2.setTransform(r,0,0,r,0,0)}
+addEventListener('resize',size);size();
+function draw(ts){
+  c2.clearRect(0,0,W,H);
+  const hot=performance.now()<flashUntil,col=hot?'#e0283a':micOn?'#ff8a1f':'#5b5170';
+  c2.lineWidth=2;c2.strokeStyle=col;c2.shadowColor=col;c2.shadowBlur=hot||micOn?10:0;c2.lineJoin='round';c2.beginPath();
+  if(analyser){
+    buf=buf||new Uint8Array(analyser.fftSize);analyser.getByteTimeDomainData(buf);
+    const step=buf.length/W;
+    for(let x=0;x<W;x++){const v=(buf[Math.floor(x*step)]-128)/128;const y=H/2+v*H*.9;x?c2.lineTo(x,y):c2.moveTo(x,y)}
+  }else{c2.moveTo(0,H/2);c2.lineTo(W,H/2)}
+  c2.stroke();requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+
+ui();
+if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+if(!navigator.standalone&&!matchMedia('(display-mode: standalone)').matches&&location.protocol.startsWith('http'))
+  say('For offline use: Share, then Add to Home Screen.');
+</script>
+</body>
+</html>
